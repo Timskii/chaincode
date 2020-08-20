@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"crypto/sha256"
+	"strings"
+	"time"
+
 
 	"github.com/hyperledger/fabric/core/chaincode/shim"
 	pb "github.com/hyperledger/fabric/protos/peer"
@@ -28,6 +32,29 @@ type Data struct {
 type DatasChaincode struct {
 	Stub shim.ChaincodeStubInterface
 }
+
+type Response struct {
+	Status    string
+	Message   string
+	Txn       string
+	Hash      string
+	Domain    string
+	Id        string
+	AssetInfo AssetInfo
+}
+
+type AssetInfo struct {
+	Key         string
+	Status      string
+	Description string
+}
+
+const (
+	OK             = 200
+	ERRORTHRESHOLD = 400
+	ERROR          = 500
+)
+
 
 func (i *DatasChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
 	log.Println("Init")
@@ -151,6 +178,55 @@ func (i *DatasChaincode) get(args []string) pb.Response {
 	log.Printf("DatasBytes = <%v>", buffer.String())
 	return response.success(buffer.String()) //TODO: return []byte
 }
+
+
+func newResponse(txn string, domain string, id string) *Response {
+	return &Response{Status: "Ok", Txn: txn, Domain: domain, Id: id}
+}
+
+func (r *Response) error(msg string) pb.Response {
+	r.Status = "ERROR"
+	r.Message = msg
+	responseBytes, _ := json.Marshal(r)
+	return pb.Response{
+		Status:  ERROR,
+		Message: msg,
+		Payload: responseBytes,
+	}
+}
+
+func (r *Response) success(msg string) pb.Response {
+	responseBytes, _ := json.Marshal(r)
+	return pb.Response{
+		Status:  OK,
+		Message: msg,
+		Payload: responseBytes,
+	}
+}
+
+const dateFormat = "2006-01-02"
+
+type JSONTime struct {
+	time.Time
+}
+
+func (jsonTime *JSONTime) UnmarshalJSON(p []byte) error {
+	strInput := string(p)
+	strInput = strings.Trim(strInput, `"`)
+	t, err := time.Parse(dateFormat, strInput)
+	if err != nil {
+		return err
+	}
+	jsonTime.Time = t
+	return nil
+}
+
+func generateHash(message []byte) []byte {
+	hasher := sha256.New()
+	hasher.Write(message)
+	return hasher.Sum(nil)
+}
+
 
 func main() {
 	err := shim.Start(new(DatasChaincode))
